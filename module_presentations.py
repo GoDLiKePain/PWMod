@@ -1532,7 +1532,6 @@ presentations.extend([
         (store_add, ":factions_end", factions_begin, 1),
       (try_end),
       (try_for_range, ":current_faction_id", factions_begin, ":factions_end"),
-        (faction_slot_eq, ":current_faction_id", slot_faction_is_active, 1),
         (try_for_range, ":player_id", 1, ":max_players"), # loop over factions one by one, grouping their members together in the list
           (player_is_active, ":player_id"),
           (this_or_next|neq, "$g_list_players_faction_id", -1),
