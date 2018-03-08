@@ -13363,6 +13363,7 @@ scripts.extend([
       (try_end),
       (try_begin),  # Music handle animations/sound
         (ge, ":music", 0),  # is the agent playing music
+        (call_script, "script_cf_has_enough_skill_level", ":agent_id", "skl_musician", ":music"),
         (call_script, "script_cf_can_play_musical_instrument", ":agent_id", ":animation", ":sound"),
         (try_begin),
           (this_or_next | eq, reg4, 1),
