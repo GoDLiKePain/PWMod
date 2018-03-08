@@ -867,6 +867,41 @@ scripts.extend([
             (prop_instance_clear_attached_missiles, ":linked_instance_id_2"),
           (try_end),
         (try_end),
+      (else_try),
+        (eq, ":event_type", server_event_agent_stop_sound),
+        (store_script_param, ":agent_id", 3),
+        (try_begin),
+          (agent_is_active, ":agent_id"),
+          (agent_stop_sound, ":agent_id"),
+        (try_end),
+      (else_try),
+        (eq, ":event_type", server_event_agent_play_sound),
+        (store_script_param, ":agent_id", 3),
+        (store_script_param, ":sound", 4),
+        (store_script_param, ":max_distance", 5), # How far you want the sound to travel
+        (try_begin),
+          (agent_is_active, ":agent_id"),
+          (agent_is_alive,":agent_id"),
+
+          (multiplayer_get_my_player, ":my_player_no"),
+          (player_get_agent_id,":my_agent", ":my_player_no"),
+          (agent_is_active, ":my_agent"),
+
+          (agent_get_position,pos1,":agent_id"),
+          (agent_get_position,pos2,":my_agent"),
+          (get_distance_between_positions_in_meters,":distance",pos1,pos2),
+
+          (agent_play_sound, ":agent_id", ":sound"),# Play the normal sound position
+          (neq,":max_distance",0),
+          #Work out how far the distance is being traveled
+          (gt,":distance",200),
+          (store_sub, ":dis_sound", ":distance", 200),
+          (val_clamp, ":dis_sound", 0, 800),#Keep to a 1k range
+          (neg|gt,":dis_sound",":max_distance"),#Ensure it doesnt travel over the max range
+          (val_div, ":dis_sound", 100),#Divide by 100 to get a single digit value
+          (val_add, ":dis_sound", ":sound"),
+          (play_sound, ":dis_sound"),
+        (try_end),
       (try_end),
 
     (else_try), # section of events received by server from the clients
@@ -1403,6 +1438,13 @@ scripts.extend([
         (store_mission_timer_a, ":time"),
         (val_add, ":time", suicide_delay),
         (player_set_slot, ":sender_player_id", slot_player_commit_suicide_time, ":time"),
+      (else_try), # handle custom animations
+        (eq, ":event_type", client_event_agent_animate),
+        (player_get_agent_id, ":player_agent", ":sender_player_id"),
+        (agent_is_active,":player_agent"),
+        (store_script_param, ":anim", 3),
+        (store_script_param, ":body", 4),
+        (call_script, "script_cf_do_custom_anims", ":player_agent", ":anim",":body"),
       (try_end),
     (try_end),
     ]),
@@ -3329,6 +3371,10 @@ scripts.extend([
     (agent_set_slot, ":agent_id", slot_agent_hunting_last_carcass, -1),
     (agent_set_slot, ":agent_id", slot_agent_animal_herd_manager, -1),
     (agent_set_slot, ":agent_id", slot_agent_animal_carcass_instance_id, -1),
+    (agent_set_slot, ":agent_id", slot_agent_scene_prop_in_use, -1),
+    (agent_set_slot, ":agent_id", slot_agent_pose_anim, -1),
+    (agent_set_slot, ":agent_id", slot_agent_pose_manager, -1),
+    (agent_set_slot,":agent_id",slot_agent_move_speed_modifier,100),
     (try_begin),
       (eq, "$g_full_respawn_health", 0),
       (agent_is_human, ":agent_id"),
@@ -12995,7 +13041,146 @@ scripts.extend([
     (eq, ":fail", 0),
     ]),
 
+  ("cf_is_player_female",  # server: Check if player is female. Due to scene props cant check this.
+   [(multiplayer_is_server),
+    (store_script_param, ":player_id", 1),  # must be valid
+    (player_is_active, ":player_id"),
+    (player_get_gender, ":gender", ":player_id"),
+    (eq, ":gender", tf_female),
+    ]),
 
+  ("cf_do_custom_anims",  # server: Do custom animations e.g. surrender
+   [(multiplayer_is_server),
+    (store_script_param, ":agent_id", 1),  # must be valid
+    (store_script_param, ":anim", 2),  # must be valid
+    (store_script_param, ":body", 3),
+    (agent_set_animation, ":agent_id", ":anim", ":body"),
+    ]),
+
+  ("cf_can_play_musical_instrument",  # server: Handle starting a musical instrument
+   [(multiplayer_is_server),
+    (store_script_param, ":agent_id", 1),  # must be valid
+    (store_script_param, ":anim", 2),  # must be valid
+    (store_script_param, ":sound", 3),  # must be valid
+    (agent_get_slot, ":playingmusic", ":agent_id", slot_agent_playing_music),
+    (assign, reg5, 1),
+    (eq, ":playingmusic", 0),
+    (agent_get_wielded_item, ":weapon", ":agent_id", 0),
+    (try_begin),
+      (eq, ":anim", "anim_play_lute"),
+      (try_begin),
+        (eq, ":weapon", "itm_lute"),
+        (agent_set_slot, ":agent_id", slot_agent_playing_music, ":sound"),
+        (assign, reg5, 0),
+      (try_end),
+      (else_try),
+        (eq, ":anim", "anim_play_lyre"),
+        (try_begin),
+          (eq, ":weapon", "itm_lyre"),
+          (agent_set_slot, ":agent_id", slot_agent_playing_music, ":sound"),
+          (assign, reg5, 0),
+        (try_end),
+      (else_try),
+        (eq, ":anim", "anim_play_horn"),
+      (try_begin),
+        (eq, ":weapon", "itm_warhorn"),
+        (agent_set_slot, ":agent_id", slot_agent_playing_music, ":sound"),
+        (assign, reg5, 0),
+      (try_end),
+    (try_end),
+    ]),
+
+  ("cf_check_musical_instrument",  # server: Keep checking if user can continue to play music
+   [(multiplayer_is_server),
+    (get_max_players, ":max_players"),
+    (try_for_range, ":player_id", 1, ":max_players"),
+      (player_is_active, ":player_id"),
+      (player_get_agent_id, ":agent_id", ":player_id"),
+      (agent_is_active, ":agent_id"),
+      (agent_is_alive, ":agent_id"),
+      (agent_get_slot, ":playing", ":agent_id", slot_agent_playing_music),
+      (try_begin),
+        (ge, ":playing", 1),
+        (agent_get_animation, ":anim", ":agent_id", 1),
+        (assign, ":fail", 1),
+        (try_begin),
+          (eq, ":anim", "anim_play_lute"),
+          (assign, ":fail", 0),
+        (else_try),
+          (eq, ":anim", "anim_play_lyre"),
+          (assign, ":fail", 0),
+        (else_try),
+          (eq, ":anim", "anim_play_horn"),
+          (assign, ":fail", 0),
+        (try_end),
+        (try_begin),
+          (eq, ":fail", 1),
+          (call_script, "script_cf_stop_playing_musical_instrument", ":agent_id"),
+        (try_end),
+      (try_end),
+    (try_end),
+    ]),
+
+  ("cf_stop_playing_musical_instrument",  # server: Handle stop playing a musical instrument
+   [(multiplayer_is_server),
+    (store_script_param, ":agent_id", 1),  # must be valid
+    (agent_is_active, ":agent_id"),
+    (agent_is_human, ":agent_id"),
+    (agent_get_slot, ":playingmusic", ":agent_id", slot_agent_playing_music),
+    (gt, ":playingmusic", 0),
+    (assign, reg20, 1),
+    (agent_set_slot, ":agent_id", slot_agent_playing_music, 0),
+    (get_max_players, ":max_players"),
+    (try_for_range, ":player_id", 1, ":max_players"),
+      (player_is_active, ":player_id"),
+      (multiplayer_send_int_to_player, ":player_id", server_event_agent_stop_sound, ":agent_id"),
+      (call_script, "script_cf_do_custom_anims", ":agent_id", "anim_pose_finish", 1),
+    (try_end),
+    ]),
+
+  ("client_stop_playing_musical_instrument",  # client: Handle stop playing a musical instrument
+   [(store_script_param, ":agent_id", 1),  # must be valid
+     (try_begin),
+       (neg | multiplayer_is_dedicated_server),
+       (try_begin),
+         (agent_is_active, ":agent_id"),
+         (agent_stop_sound, ":agent_id"),
+       (try_end),
+     (try_end),
+   ]),
+
+  ("cf_play_global_agent_sound",  # server: Handle global sound of agents
+   [(multiplayer_is_server),
+    (store_script_param, ":agent_id", 1),  # must be valid
+    (store_script_param, ":sound", 2),  # sound to be played must be valid
+    (store_script_param, ":distance", 3),  # Meters
+    (agent_is_active, ":agent_id"),
+    (get_max_players, ":max_players"),
+    (try_for_range, ":player_id", 1, ":max_players"),
+      (player_is_active, ":player_id"),
+      (multiplayer_send_3_int_to_player, ":player_id", server_event_agent_play_sound, ":agent_id", ":sound", ":distance"),
+    (try_end),
+    ]),
+
+  ("cf_setup_pose_manager",  # server: Setup human poses
+   [(multiplayer_is_server),
+    (store_script_param, ":agent_id", 1),  # must be valid
+    (store_script_param, ":anim", 2),
+    (assign, reg6, 1),
+    (agent_get_slot, ":instance", ":agent_id", slot_agent_pose_manager),
+    (agent_get_slot, ":poser", ":agent_id", slot_agent_pose_anim),
+    (try_begin),
+      (eq, ":instance", -1),  # only agents with managers allowed in
+      (eq, ":poser", -1),  # posers are not allowed in
+
+      (agent_get_position, pos1, ":agent_id"),
+      (call_script, "script_reuse_or_spawn_scene_prop", "spr_code_pose_manager"),
+      (prop_instance_set_position, reg0, pos1),
+      (agent_set_slot, ":agent_id", slot_agent_pose_manager, reg0),
+      (agent_set_slot, ":agent_id", slot_agent_pose_anim, ":anim"),
+      (assign, reg6, 0),
+    (try_end),
+    ]),
 
   ("initialize_animation_menu_strings", # set up the starting and ending string ids for the animation menu
    [
@@ -13008,7 +13193,11 @@ scripts.extend([
     (troop_set_slot, "trp_animation_menu_strings", 3, "str_anim_war_cry"),
     (troop_set_slot, "trp_animation_menu_strings", 3 + animation_menu_end_offset, "str_anim_stand_and_deliver"),
     (troop_set_slot, "trp_animation_menu_strings", 4, "str_anim_stand_and_deliver"),
-    (troop_set_slot, "trp_animation_menu_strings", 4 + animation_menu_end_offset, "str_log_animation"),
+    (troop_set_slot, "trp_animation_menu_strings", 4 + animation_menu_end_offset, "str_anim_horn_charge"),
+    (troop_set_slot, "trp_animation_menu_strings", 5, "str_anim_horn_charge"),
+    (troop_set_slot, "trp_animation_menu_strings", 5 + animation_menu_end_offset, "str_anim_lute_1"),
+    (troop_set_slot, "trp_animation_menu_strings", 6, "str_anim_lute_1"),
+    (troop_set_slot, "trp_animation_menu_strings", 6 + animation_menu_end_offset, "str_log_animation"),
     ]),
 
   ("initialize_animation_durations", []), # copies animation durations in milliseconds from module_animations.py to slots of trp_animation_durations
@@ -13032,16 +13221,17 @@ def animation_menu_entry(string_id, **kwargs):
 
 scripts.extend([
 
-  ("cf_try_execute_animation", # clients, server: check if an agent can play an animation; if successful, on clients return test result in reg0 or send a message, execute if the server
-   [(store_script_param, ":player_id", 1), # must be valid
+  ("cf_try_execute_animation",
+   # clients, server: check if an agent can play an animation; if successful, on clients return test result in reg0 or send a message, execute if the server
+   [(store_script_param, ":player_id", 1),  # must be valid
     (store_script_param, ":string_id", 2),
-    (store_script_param, ":only_test", 3), # if 1, the level of tests passed is returned in reg0
+    (store_script_param, ":only_test", 3),  # if 1, the level of tests passed is returned in reg0
 
     (assign, ":test_passed", 0),
     (try_begin),
       (player_get_is_muted, ":is_muted", ":player_id"),
-      (this_or_next|eq, ":is_muted", 0),
-      (neg|multiplayer_is_server),
+      (this_or_next | eq, ":is_muted", 0),
+      (neg | multiplayer_is_server),
       (player_get_agent_id, ":agent_id", ":player_id"),
       (agent_is_active, ":agent_id"),
       (agent_is_alive, ":agent_id"),
@@ -13059,51 +13249,71 @@ scripts.extend([
       (gt, ":time_ms", ":delayed_time_ms"),
       (assign, ":test_passed", 1),
 
-      (assign, ":animation", -1), # optional agent animation played
-      (assign, ":woman_alt_animation", -1), # optional alternate animation played if the agent is a woman.
-      (assign, ":upper_body_only", 1), # 0 = override the full body movement animations, 1 = override the upper body parts only
-      (assign, ":sound", -1), # optional sound to play for men or women
-      (assign, ":man_sound", -1), # optional sound to play only for men
-      (assign, ":woman_sound", -1), # optional sound to play only for women
-      (assign, ":duration_ms", 0), # duration in milliseconds: animations are set automatically, but this should be set when only playing a sound
-      (assign, ":prevent_if_wielding", 0), # 1 = prevent this animation from being triggered if the agent is wielding any items
-      (assign, ":prevent_if_moving", 0), # 1 = prevent this animation from being triggered if the agent is moving
-      (assign, ":add_to_chat", 0), # display the animation string in the local chat for near the player
-      (try_begin), # the first script parameter is the name string id, which must be in the appropriate section of module_strings.py
-        animation_menu_entry("str_anim_cheer", animation="anim_cheer", man_sound="snd_man_victory"),
-        animation_menu_entry("str_anim_clap", animation="anim_man_clap", woman_alt_animation="anim_woman_clap", prevent_if_wielding=1),
-        animation_menu_entry("str_anim_raise_sword", animation="anim_pose_raise_sword"),
-        animation_menu_entry("str_anim_hands_on_hips", animation="anim_pose_hands_on_hips", prevent_if_wielding=1, prevent_if_moving=1),
-        animation_menu_entry("str_anim_arms_crossed", animation="anim_pose_arms_crossed", prevent_if_wielding=1, prevent_if_moving=1),
-        animation_menu_entry("str_anim_stand_still", animation="anim_stand_lord", woman_alt_animation="anim_stand_lady", prevent_if_moving=1),
-        animation_menu_entry("str_anim_away_vile_beggar", man_sound="snd_away_vile_beggar", duration_ms=2100, add_to_chat=1),
+      (assign, ":animation", -1),  # optional agent animation played
+      (assign, ":woman_alt_animation", -1),  # optional alternate animation played if the agent is a woman.
+      (assign, ":upper_body_only", 1),
+      # 0 = override the full body movement animations, 1 = override the upper body parts only
+      (assign, ":sound", -1),  # optional sound to play for men or women
+      (assign, ":man_sound", -1),  # optional sound to play only for men
+      (assign, ":woman_sound", -1),  # optional sound to play only for women
+      (assign, ":duration_ms", 0),
+      # duration in milliseconds: animations are set automatically, but this should be set when only playing a sound
+      (assign, ":prevent_if_wielding", 0),
+      # 1 = prevent this animation from being triggered if the agent is wielding any items
+      (assign, ":prevent_if_moving", 0),  # 1 = prevent this animation from being triggered if the agent is moving
+      (assign, ":add_to_chat", 0),  # display the animation string in the local chat for near the player
+      (assign, ":music", -1),  # ensure that music is handled correctly
+      (assign, ":instrument", -1),  # required wielded item
+      (assign, ":max_distance", 0),  # distance in which the sound can reach in meters
+      (assign, ":pose", 0),  # is this a pose
+      (try_begin),
+        # the first script parameter is the name string id, which must be in the appropriate section of module_strings.py
+        animation_menu_entry("str_anim_cheer", animation="anim_cheer", man_sound="snd_man_victory",woman_sound="snd_woman_yell"),
+        animation_menu_entry("str_anim_clap", animation="anim_man_clap", woman_alt_animation="anim_woman_clap",prevent_if_wielding=1),
+        animation_menu_entry("str_anim_raise_sword", animation="anim_pose_raise_sword", prevent_if_moving=1, pose=1),
+        animation_menu_entry("str_anim_hands_on_hips", animation="anim_pose_hands_on_hips", prevent_if_wielding=1,prevent_if_moving=1, pose=1),
+        animation_menu_entry("str_anim_arms_crossed", animation="anim_pose_arms_crossed", prevent_if_wielding=1,prevent_if_moving=1, pose=1),
+        animation_menu_entry("str_anim_stand_still", animation="anim_stand_lord", woman_alt_animation="anim_stand_lady",prevent_if_moving=1, prevent_if_wielding=1, pose=1),
+        animation_menu_entry("str_anim_kneel", animation="anim_pose_kneel_male", woman_alt_animation="anim_pose_kneel_female", prevent_if_moving=1, prevent_if_wielding=1,pose=1),
+        animation_menu_entry("str_anim_pray", animation="anim_pose_pray", prevent_if_moving=1, prevent_if_wielding=1,pose=1),
+        animation_menu_entry("str_anim_away_vile_beggar", man_sound="snd_away_vile_beggar", duration_ms=2100,add_to_chat=1),
         animation_menu_entry("str_anim_my_lord", man_sound="snd_my_lord", duration_ms=700, add_to_chat=1),
-        animation_menu_entry("str_anim_almost_harvesting_season", man_sound="snd_almost_harvesting_season", duration_ms=1900, add_to_chat=1),
+        animation_menu_entry("str_anim_almost_harvesting_season", man_sound="snd_almost_harvesting_season",duration_ms=1900, add_to_chat=1),
         animation_menu_entry("str_anim_whats_this_then", man_sound="snd_whats_this_then", duration_ms=1300, add_to_chat=1),
-        animation_menu_entry("str_anim_out_for_a_stroll_are_we", man_sound="snd_out_for_a_stroll_are_we", duration_ms=1900, add_to_chat=1),
+        animation_menu_entry("str_anim_out_for_a_stroll_are_we", man_sound="snd_out_for_a_stroll_are_we", duration_ms=1900,add_to_chat=1),
         animation_menu_entry("str_anim_we_ride_to_war", man_sound="snd_we_ride_to_war", duration_ms=2600, add_to_chat=1),
-        animation_menu_entry("str_anim_less_talking_more_raiding", man_sound="snd_less_talking_more_raiding", duration_ms=1900, add_to_chat=1),
+        animation_menu_entry("str_anim_less_talking_more_raiding", man_sound="snd_less_talking_more_raiding",duration_ms=1900, add_to_chat=1),
         animation_menu_entry("str_anim_you_there_stop", man_sound="snd_you_there_stop", duration_ms=1700, add_to_chat=1),
-        animation_menu_entry("str_anim_war_cry", man_sound="snd_man_warcry", woman_sound="snd_woman_yell", duration_ms=2100),
-        animation_menu_entry("str_anim_tear_you_limb_from_limb", man_sound="snd_tear_you_limb_from_limb", duration_ms=3100, add_to_chat=1),
-        animation_menu_entry("str_anim_better_not_be_a_manhunter", man_sound="snd_better_not_be_a_manhunter", duration_ms=2300, add_to_chat=1),
+        animation_menu_entry("str_anim_war_cry", man_sound="snd_man_warcry", woman_sound="snd_woman_yell",duration_ms=2100),
+        animation_menu_entry("str_anim_tear_you_limb_from_limb", man_sound="snd_tear_you_limb_from_limb", duration_ms=3100,add_to_chat=1),
+        animation_menu_entry("str_anim_better_not_be_a_manhunter", man_sound="snd_better_not_be_a_manhunter",duration_ms=2300, add_to_chat=1),
         animation_menu_entry("str_anim_drink_from_your_skull", man_sound="snd_drink_from_your_skull", duration_ms=1800, add_to_chat=1),
         animation_menu_entry("str_anim_gods_will_decide_your_fate", man_sound="snd_gods_will_decide_your_fate", duration_ms=2100, add_to_chat=1),
-        animation_menu_entry("str_anim_nice_head_on_shoulders", man_sound="snd_nice_head_on_shoulders", duration_ms=2400, add_to_chat=1),
+        animation_menu_entry("str_anim_nice_head_on_shoulders", man_sound="snd_nice_head_on_shoulders", duration_ms=2400,add_to_chat=1),
         animation_menu_entry("str_anim_hunt_you_down", man_sound="snd_hunt_you_down", duration_ms=2100, add_to_chat=1),
-        animation_menu_entry("str_anim_dead_men_tell_no_tales", man_sound="snd_dead_men_tell_no_tales", duration_ms=1800, add_to_chat=1),
+        animation_menu_entry("str_anim_dead_men_tell_no_tales", man_sound="snd_dead_men_tell_no_tales", duration_ms=1800,add_to_chat=1),
         animation_menu_entry("str_anim_stand_and_deliver", man_sound="snd_stand_and_deliver", duration_ms=1500, add_to_chat=1),
         animation_menu_entry("str_anim_your_money_or_your_life", man_sound="snd_your_money_or_your_life", duration_ms=2100, add_to_chat=1),
-        animation_menu_entry("str_anim_have_our_pay_or_fun", man_sound="snd_have_our_pay_or_fun", duration_ms=3200, add_to_chat=1),
-        animation_menu_entry("str_anim_word_about_purse_belongings", man_sound="snd_word_about_purse_belongings", duration_ms=3800, add_to_chat=1),
+        animation_menu_entry("str_anim_have_our_pay_or_fun", man_sound="snd_have_our_pay_or_fun", duration_ms=3200,add_to_chat=1),
+        animation_menu_entry("str_anim_word_about_purse_belongings", man_sound="snd_word_about_purse_belongings",duration_ms=3800, add_to_chat=1),
         animation_menu_entry("str_anim_easy_way_or_hard_way", man_sound="snd_easy_way_or_hard_way", duration_ms=3400, add_to_chat=1),
-        animation_menu_entry("str_anim_everything_has_a_price", man_sound="snd_everything_has_a_price", duration_ms=3100, add_to_chat=1),
-        animation_menu_entry("str_anim_slit_your_throat", man_sound="snd_slit_your_throat", duration_ms=2400, add_to_chat=1),
+        animation_menu_entry("str_anim_everything_has_a_price", man_sound="snd_everything_has_a_price", duration_ms=3100,add_to_chat=1),
+        animation_menu_entry("str_anim_slit_your_throat", man_sound="snd_slit_your_throat", duration_ms=2400,add_to_chat=1),
+        animation_menu_entry("str_anim_lute_1", animation="anim_play_lute", man_sound="snd_lute_1",woman_sound="snd_lute_1", music=2, instrument="itm_lute"),
+        animation_menu_entry("str_anim_lute_2", animation="anim_play_lute", man_sound="snd_lute_2", woman_sound="snd_lute_2", music=2, instrument="itm_lute"),
+        animation_menu_entry("str_anim_lute_3", animation="anim_play_lute", man_sound="snd_lute_3",woman_sound="snd_lute_3", music=2, instrument="itm_lute"),
+        animation_menu_entry("str_anim_lute_4", animation="anim_play_lute", man_sound="snd_lute_4",woman_sound="snd_lute_4", music=2, instrument="itm_lute"),
+        animation_menu_entry("str_anim_lyre_1", animation="anim_play_lyre", man_sound="snd_lyre_1",woman_sound="snd_lyre_1", music=3, instrument="itm_lyre"),
+        animation_menu_entry("str_anim_lyre_2", animation="anim_play_lyre", man_sound="snd_lyre_2",woman_sound="snd_lyre_2", music=3, instrument="itm_lyre"),
+        animation_menu_entry("str_anim_lyre_3", animation="anim_play_lyre", man_sound="snd_lyre_3",woman_sound="snd_lyre_3", music=3, instrument="itm_lyre"),
+        animation_menu_entry("str_anim_lyre_4", animation="anim_play_lyre", man_sound="snd_lyre_4",woman_sound="snd_lyre_4", music=3, instrument="itm_lyre"),
+        animation_menu_entry("str_anim_horn_charge", animation="anim_play_horn", man_sound="snd_horncharge",woman_sound="snd_horncharge", instrument="itm_warhorn", music=0, max_distance=700),
+        animation_menu_entry("str_anim_horn_regroup", animation="anim_play_horn", man_sound="snd_hornregroup",woman_sound="snd_hornregroup", instrument="itm_warhorn", music=0, max_distance=700),
+        animation_menu_entry("str_anim_horn_retreat", animation="anim_play_horn", man_sound="snd_hornretreat",woman_sound="snd_hornretreat", instrument="itm_warhorn", music=0, max_distance=700),
       (else_try),
         (assign, ":string_id", -1),
       (try_end),
       (gt, ":string_id", -1),
-
       (player_get_gender, ":gender", ":player_id"),
       (try_begin),
         (eq, ":gender", tf_female),
@@ -13115,9 +13325,17 @@ scripts.extend([
         (eq, ":prevent_if_wielding", 1),
         (agent_get_wielded_item, ":weapon", ":agent_id", 0),
         (agent_get_wielded_item, ":shield", ":agent_id", 0),
-        (this_or_next|neq, ":weapon", -1),
+        (this_or_next | neq, ":weapon", -1),
         (neq, ":shield", -1),
         (assign, ":animation", -1),
+      (try_end),
+      (try_begin),
+        (ge, ":instrument", 0),
+        (agent_get_wielded_item, ":instrumentheld", ":agent_id", 0),
+        (neq, ":instrumentheld", ":instrument"),
+        (assign, ":animation", -1),
+        (assign, ":man_sound", -1),
+        (assign, ":woman_sound", -1),
       (try_end),
       (try_begin),
         (eq, ":prevent_if_moving", 1),
@@ -13125,7 +13343,7 @@ scripts.extend([
         (agent_get_speed, pos0, ":agent_id"),
         (position_get_y, ":forwards_speed", pos0),
         (position_get_x, ":sideways_speed", pos0),
-        (this_or_next|gt, ":forwards_speed", 10),
+        (this_or_next | gt, ":forwards_speed", 10),
         (gt, ":sideways_speed", 10),
         (assign, ":animation", -1),
       (try_end),
@@ -13138,8 +13356,32 @@ scripts.extend([
         (gt, ":woman_sound", -1),
         (assign, ":sound", ":woman_sound"),
       (try_end),
-      (this_or_next|gt, ":animation", -1),
-      (this_or_next|gt, ":sound", -1),
+      (try_begin),  # cancel music if playing already
+        (agent_slot_ge, ":agent_id", slot_agent_playing_music, 1),
+        (call_script, "script_cf_stop_playing_musical_instrument", ":agent_id"),
+        (call_script, "script_client_stop_playing_musical_instrument", ":agent_id"),
+      (try_end),
+      (try_begin),  # Music handle animations/sound
+        (ge, ":music", 0),  # is the agent playing music
+        (call_script, "script_cf_can_play_musical_instrument", ":agent_id", ":animation", ":sound"),
+        (try_begin),
+          (this_or_next | eq, reg4, 1),
+          (eq, reg5, 1),
+          (assign, ":animation", -1),
+          (assign, ":sound", -1),
+        (try_end),
+      (try_end),
+      (try_begin),
+        (eq, ":pose", 1),  # is the animation a pose
+        (call_script, "script_cf_setup_pose_manager", ":agent_id", ":animation"),
+        (try_begin),
+          (eq, reg6, 1),
+          (assign, ":animation", -1),
+          (assign, ":sound", -1),
+        (try_end),
+      (try_end),
+      (this_or_next | gt, ":animation", -1),
+      (this_or_next | gt, ":sound", -1),
       (eq, ":add_to_chat", 1),
       (assign, ":test_passed", 2),
       (eq, ":only_test", 0),
@@ -13153,36 +13395,41 @@ scripts.extend([
           (get_max_players, ":max_players"),
           (agent_get_position, pos0, ":agent_id"),
           (try_for_range, ":other_player_id", 1, ":max_players"),
-            (player_is_active, ":other_player_id"),
-            (try_begin),
-              (eq, ":player_id", ":other_player_id"),
-            (else_try),
-              (player_get_agent_id, ":other_agent_id", ":other_player_id"),
-              (agent_is_active, ":other_agent_id"),
-              (agent_is_alive, ":other_agent_id"),
-              (agent_get_position, pos1, ":other_agent_id"),
-              (get_sq_distance_between_positions, ":distance", pos0, pos1),
-              (le, ":distance", sq(max_distance_local_animation)),
-            (else_try),
-              (assign, ":other_player_id", -1),
-            (try_end),
-            (neq, ":other_player_id", -1),
-            (multiplayer_send_2_int_to_player, ":other_player_id", server_event_local_animation, ":player_id", ":string_id"),
+          (player_is_active, ":other_player_id"),
+          (try_begin),
+            (eq, ":player_id", ":other_player_id"),
+          (else_try),
+            (player_get_agent_id, ":other_agent_id", ":other_player_id"),
+            (agent_is_active, ":other_agent_id"),
+            (agent_is_alive, ":other_agent_id"),
+            (agent_get_position, pos1, ":other_agent_id"),
+            (get_sq_distance_between_positions, ":distance", pos0, pos1),
+            (le, ":distance", sq(max_distance_local_animation)),
+          (else_try),
+            (assign, ":other_player_id", -1),
           (try_end),
+          (neq, ":other_player_id", -1),
+          (multiplayer_send_2_int_to_player, ":other_player_id", server_event_local_animation, ":player_id", ":string_id"),
         (try_end),
+      (try_end),
         (try_begin),
           (gt, ":animation", -1),
           (agent_set_animation, ":agent_id", ":animation", ":upper_body_only"),
         (try_end),
         (try_begin),
           (gt, ":sound", -1),
-          (agent_play_sound, ":agent_id", ":sound"),
+          (try_begin),
+            (eq, ":music", 1),  # Ensure all players know the agent is playing a sound
+            (call_script, "script_cf_play_global_agent_sound", ":agent_id", ":sound", ":max_distance"),
+          (else_try),
+            (agent_play_sound, ":agent_id", ":sound"),
+          (try_end),
         (try_end),
       (try_end),
       (try_begin),
-        (gt, ":animation", -1),
-        (eq, ":duration_ms", 0),
-        (troop_get_slot, ":duration_ms", "trp_animation_durations", ":animation"),
+          (gt, ":animation", -1),
+          (eq, ":duration_ms", 0),
+          (troop_get_slot, ":duration_ms", "trp_animation_durations", ":animation"),
       (try_end),
       (store_add, ":next_end_time_ms", ":time_ms", ":duration_ms"),
       (store_sub, ":next_animation_delay_ms", ":time_ms", ":end_time_ms"),
@@ -13200,7 +13447,7 @@ scripts.extend([
       (agent_set_slot, ":agent_id", slot_agent_last_animation_string_id, ":string_id"),
       (agent_set_slot, ":agent_id", slot_agent_recent_animations_delay_ms, ":next_animation_delay_ms"),
       (try_begin),
-        (neg|multiplayer_is_server),
+        (neg | multiplayer_is_server),
         (multiplayer_send_int_to_server, client_event_request_animation, ":string_id"),
       (else_try),
         (store_sub, ":excessive_repetition_damage", ":next_animation_delay_ms", 12000),
@@ -13214,7 +13461,7 @@ scripts.extend([
       (assign, ":test_passed", 3),
     (try_end),
     (assign, reg0, ":test_passed"),
-    (this_or_next|ge, ":test_passed", 3),
+    (this_or_next | ge, ":test_passed", 3),
     (neq, ":only_test", 0),
     ]),
 

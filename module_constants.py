@@ -147,6 +147,16 @@ slot_agent_cannot_attack              = 64 # marks that any attack should be can
 slot_agent_armor_damage_through       = 65 # factor of letting damage received bleed through the armor
 slot_agent_last_apply_factors_item_id = 66 # last item id that modifier factors were last checked for, to avoid duplicating calculations due to trigger activation quirks
 
+slot_agent_scene_prop_in_use          = 66
+
+slot_agent_playing_music              = 67
+
+slot_agent_pose_anim                  = 69
+slot_agent_pose_manager               = 70
+
+slot_agent_move_speed_modifier        = 71
+slot_agent_walking                    = 72
+
 ########################################################
 ##  SCENE PROP SLOTS       #############################
 ########################################################

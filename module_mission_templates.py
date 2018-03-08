@@ -881,6 +881,96 @@ animation_menu_pressed = (0, 0.05, 0, [(game_key_clicked, gk_animation_menu),(ca
     (try_end),
     ])
 
+sitting_check = (1, 0, 0, [],  # server: handle agents sitting
+    [(multiplayer_is_server),
+    (try_for_agents, ":agent_id"),
+        (agent_is_active, ":agent_id"),
+        (agent_is_alive, ":agent_id"),
+        (agent_is_human, ":agent_id"),
+        (agent_get_slot, ":instance", ":agent_id", slot_agent_scene_prop_in_use),
+        (ge, ":instance", 0),
+        (agent_get_animation, ":anim", ":agent_id", 0),
+        (try_begin),
+            (this_or_next | eq, ":anim", "anim_sitting"),
+            (this_or_next | eq, ":anim", "anim_sitting_pillow_male"),
+            (eq, ":anim", "anim_sitting_pillow_female"),
+            (try_begin),
+                (agent_get_position, pos2, ":agent_id"),
+                (prop_instance_get_position, pos4, ":instance"),
+                (get_distance_between_positions, ":dist", pos2, pos4),
+                (gt, ":dist", 45),  ##If moved away from the chair stop the animation
+                (call_script, "script_cf_do_custom_anims", ":agent_id", "anim_sitting_finish", 0),
+                (call_script, "script_cf_do_custom_anims", ":agent_id", "anim_sitting_finish", 1),
+                (agent_set_slot, ":agent_id", slot_agent_scene_prop_in_use, -1),
+            (try_end),
+        (else_try),  ##Agent isnt sitting anymore
+            (agent_set_slot, ":agent_id", slot_agent_scene_prop_in_use, -1),
+            (call_script, "script_cf_do_custom_anims", ":agent_id", "anim_pose_finish", 0),
+            (call_script, "script_cf_do_custom_anims", ":agent_id", "anim_pose_finish", 1),
+        (try_end),
+    (try_end),
+    ])
+
+pose_check = (1, 0, 0, [],  # server: handle agents posing
+    [(multiplayer_is_server),
+    (try_for_agents, ":agent_id"),
+        (agent_is_active, ":agent_id"),
+        (agent_is_alive, ":agent_id"),
+        (agent_is_human, ":agent_id"),
+        (agent_get_slot, ":instance", ":agent_id", slot_agent_pose_manager),
+        (ge, ":instance", 0),
+        (prop_instance_get_scene_prop_kind, ":scene_prop", ":instance"),
+        (try_begin),
+            (eq, ":scene_prop", "spr_code_pose_manager"),
+            (prop_instance_is_valid, ":instance"),
+            (agent_get_slot, ":pose_anim", ":agent_id", slot_agent_pose_anim),
+            (ge, ":pose_anim", 0),
+            (agent_get_animation, ":anim", ":agent_id", 1),
+            (try_begin),
+                (eq, ":anim", ":pose_anim"),
+                (try_begin),
+                    (agent_get_position, pos2, ":agent_id"),
+                    (prop_instance_get_position, pos4, ":instance"),
+                    (get_distance_between_positions, ":dist", pos2, pos4),
+                    (gt, ":dist", 2),  ##If moved away from the manager stop the animation
+                    (call_script, "script_cf_do_custom_anims", ":agent_id", "anim_pose_finish", 1),
+                    (agent_set_slot, ":agent_id", slot_agent_pose_anim, -1),
+                    (agent_set_slot, ":agent_id", slot_agent_pose_manager, -1),
+                    (call_script, "script_remove_scene_prop", ":instance", "spr_code_pose_manager"),
+                (try_end),
+            (else_try),  ##Agent isnt being a poser anymore
+                (agent_set_slot, ":agent_id", slot_agent_pose_anim, -1),
+                (agent_set_slot, ":agent_id", slot_agent_pose_manager, -1),
+                (call_script, "script_remove_scene_prop", ":instance", "spr_code_pose_manager"),
+            (try_end),
+        (try_end),
+    (try_end),
+    ])
+
+instrument_check = (2, 0, 0, [],  # server: handle agents playing instruments
+    [(multiplayer_is_server),
+    (call_script, "script_cf_check_musical_instrument"),
+    ])
+
+instrument_killed = (ti_on_agent_killed_or_wounded, 0, 0, [],  # handle instruments
+    [(store_trigger_param_1, ":dead_agent_id"),
+    (call_script, "script_client_stop_playing_musical_instrument", ":dead_agent_id"),
+    ])
+
+instrument_unwielded = (ti_on_item_unwielded, 0, 0, [],  # handle instruments
+    [(store_trigger_param_1, ":agent_id"),
+    (call_script, "script_cf_stop_playing_musical_instrument", ":agent_id"),
+    (eq, reg20, 1),
+    (call_script, "script_client_stop_playing_musical_instrument", ":agent_id"),
+    ])
+
+instrument_dropped = (ti_on_item_dropped, 0, 0, [],  # handle instruments
+    [(store_trigger_param_1, ":agent_id"),
+    (call_script, "script_cf_stop_playing_musical_instrument", ":agent_id"),
+    (eq, reg20, 1),
+    (call_script, "script_client_stop_playing_musical_instrument", ":agent_id"),
+    ])
+
 commit_suicide_loop = (0, 0, 0.5, # client: suicide countdown
    [(neg|multiplayer_is_server),
     (multiplayer_get_my_player, ":my_player_id"),
@@ -960,6 +1050,14 @@ def common_triggers(self):
     item_dropped,
     item_wielded,
     item_unwielded,
+
+    sitting_check,
+    pose_check,
+
+    instrument_check,
+    instrument_killed,
+    instrument_unwielded,
+    instrument_dropped,
 
     agent_mount,
     agent_dismount,
