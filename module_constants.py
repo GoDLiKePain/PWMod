@@ -245,6 +245,8 @@ slot_scene_prop_inventory_mod_end     = slot_scene_prop_inventory_obj_begin
 slot_scene_prop_inventory_obj_end     = slot_scene_prop_inventory_mesh_begin
 inventory_count_maximum               = slot_scene_prop_inventory_item_0 - slot_scene_prop_inventory_begin
 
+slot_scene_prop_use_time              = 55
+
 corpse_inventory_slots                = 5 # coded into the module so values are the same on the server and clients
 corpse_inventory_max_length           = 100
 

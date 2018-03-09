@@ -129,11 +129,26 @@ def spr_buy_item_triggers(item_id, pos_offset=(5,0,2), rotate=(0,0,0), use_strin
       (prop_instance_get_position, pos1, ":instance_id")])
   spr_apply_pos_offset(buy_trigger[1], pos_offset, rotate)
   if len(resources) > 0:
-    buy_trigger[1].append((call_script, "script_cf_buy_sell_item_stockpile", ":agent_id", ":instance_id"))
+    buy_trigger[1].extend([
+        (store_mission_timer_a, ":time"),
+        (scene_prop_get_slot, ":use_time", ":instance_id", slot_scene_prop_use_time),
+        (try_begin),
+            (ge, ":time", ":use_time"),
+            (call_script, "script_cf_buy_sell_item_stockpile", ":agent_id", ":instance_id"),
+        (try_end),
+    ])
   else:
     buy_trigger[1].append((call_script, "script_cf_buy_item", ":agent_id", ":instance_id"))
   craft_trigger = (ti_on_scene_prop_use, [])
   init_trigger = spr_item_init_trigger(item_id, use_string=use_string, tableau=tableau, stockpile=(len(resources) > 0), price_multiplier=price_multiplier)
+
+  start_use = (ti_on_scene_prop_start_use,
+     [(store_trigger_param_2, ":instance_id"),
+      (store_mission_timer_a, ":time"),
+      (val_add, ":time", 1),
+      (scene_prop_set_slot, ":instance_id", slot_scene_prop_use_time, ":time"),
+  ])
+
   if len(resources) > 0:
     craft_trigger[1].extend([
       (store_trigger_param_1, ":agent_id"),
@@ -174,8 +189,8 @@ def spr_buy_item_triggers(item_id, pos_offset=(5,0,2), rotate=(0,0,0), use_strin
       (scene_prop_set_slot, ":instance_id", slot_scene_prop_crafting_resource_2, resource_list[1]),
       (scene_prop_set_slot, ":instance_id", slot_scene_prop_crafting_resource_3, resource_list[2]),
       (scene_prop_set_slot, ":instance_id", slot_scene_prop_crafting_resource_4, resource_list[3]),
-      ])
-  return [init_trigger, buy_trigger, craft_trigger]
+    ])
+  return [init_trigger, start_use, buy_trigger, craft_trigger]
 
 # Export an item, removing it from the game world in exchange for money.
 def spr_export_item_triggers(item_id, use_string="str_export", price_multiplier=None):
