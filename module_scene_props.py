@@ -130,7 +130,7 @@ def spr_buy_item_triggers(item_id, pos_offset=(5,0,2), rotate=(0,0,0), use_strin
   spr_apply_pos_offset(buy_trigger[1], pos_offset, rotate)
   if len(resources) > 0:
     buy_trigger[1].extend([
-        (store_mission_timer_a, ":time"),
+        (store_mission_timer_a_msec, ":time"),
         (scene_prop_get_slot, ":use_time", ":instance_id", slot_scene_prop_use_time),
         (try_begin),
             (ge, ":time", ":use_time"),
@@ -144,8 +144,8 @@ def spr_buy_item_triggers(item_id, pos_offset=(5,0,2), rotate=(0,0,0), use_strin
 
   start_use = (ti_on_scene_prop_start_use,
      [(store_trigger_param_2, ":instance_id"),
-      (store_mission_timer_a, ":time"),
-      (val_add, ":time", 1),
+      (store_mission_timer_a_msec, ":time"),
+      (val_add, ":time", 250),
       (scene_prop_set_slot, ":instance_id", slot_scene_prop_use_time, ":time"),
   ])
 
